@@ -227,7 +227,8 @@ module tb_top_level;
             // Perform it many times ----- CPU will be idle for some time and will drive write/read requests at other
             for (i=0; i < 5000000; i++) begin
                 @(posedge clk);
-                if($urandom % 9) begin
+                // 30% chance that cpu won't interact with cache
+                if($urandom % 10 < 3) begin
                     cpu_request = 2'b11; // IDLE
                 end else begin
                     driver_cpu();        // Drive random cpu request 
@@ -250,46 +251,18 @@ module tb_top_level;
             while(!cache_complete) @(posedge clk);
         end
     endtask
-    task address_select;
-        logic [3:0] local_var;
-        begin
-            local_var = $urandom;
-            case(local_var) 
-                // Random addresses from cpu
-                4'b0000: cpu_addr = 32'h0000_0000;
-                4'b0001: cpu_addr = 32'h0000_0008; // different index
-                4'b0010: cpu_addr = 32'h0000_000C; // different index
-                4'b0011: cpu_addr = 32'h0000_001C;
-                4'b0100: cpu_addr = 32'h0000_0018; 
-                4'b0101: cpu_addr = 32'h0100_0018;
-                4'b0110: cpu_addr = 32'h0100_000C;
-                4'b0111: cpu_addr = 32'h0100_0008;
-                4'b1000: cpu_addr = 32'h0200_0010;
-                4'b1001: cpu_addr = 32'h0200_0014;
-                4'b1010: cpu_addr = 32'h0200_0020;
-                4'b1011: cpu_addr = 32'h0200_0024;
-                4'b1100: cpu_addr = 32'h0300_0000;
-                4'b1101: cpu_addr = 32'h0300_0004;
-                4'b1110: cpu_addr = 32'h0300_000C;
-                4'b1111: cpu_addr = 32'h0300_0010;
-                default: cpu_addr = 32'h0000_0000;
-            endcase
-        end
+
+    /*** Task to genrate random address from cpu.
+    Generate a word-aligned 32-bit address in 0x0000_0000 to 0x0FFF_FFFF ***/
+    task automatic address_select;
+        cpu_addr = $urandom & 32'h0FFFFFFC; // 32-bit aligned address in reasonable range
     endtask
-    task wdata_select;
-        logic [1:0] local_var;
-        begin
-            local_var = $urandom;
-            case(local_var)
-                // Random write data from cpu 
-                2'b00: cpu_wdata = 32'hDEADBEEF;
-                2'b01: cpu_wdata = 32'hABCDABCD;
-                2'b10: cpu_wdata = 32'hFEEDBEEF;
-                2'b11: cpu_wdata = 32'hBEEFDEAD;
-                default: cpu_wdata = 32'hDEADBEEF;
-            endcase
-        end
+
+    // Task to generate full 32-bit random data
+    task automatic wdata_select;
+        cpu_wdata = $urandom; 
     endtask
+      
     task call_cpu_request;
         logic local_var;
         begin
@@ -411,8 +384,8 @@ module tb_top_level;
     
             // Initialize cache lines only once
             for (int i = 0; i < 8; i++) begin
-                cache_1[i].data      = 32'hDEADBEF0 + i;  // Example: Unique data for each cache line
-                cache_1[i].tag       = 27'h0000000 + i;   // Example: Unique tag for each cache line
+                cache_1[i].data      = $urandom + i;  // Example: Unique data for each cache line
+                cache_1[i].tag       = $urandom + i;   // Example: Unique tag for each cache line
                 cache_1[i].valid_bit = 1'b1;              // Set all cache lines as valid
 
                 // Set different states based on the index

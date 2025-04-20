@@ -15,6 +15,7 @@ module top_level #(
     output logic [WIDTH_D-1:0] cpu_rdata,
     output logic               cache_ready,
     output logic               cache_complete,
+    output logic               flush_complete,
     
     // Input: Interconnect --> Cache |-----| Output: Cache --> Interconnect
     // ** WRITE ADDRESS CHANNEL
@@ -104,6 +105,7 @@ logic write_from_cpu, write_from_interconnect, ac_enable, read_resp_en;
 logic [2:0] new_state, line_state;
 logic mux_en, cache_hit, cache_miss, make_unique, read_shared, write_clean;
 logic invalid, snoop_miss, response, response_data, B_okay, R_okay;
+logic internal_flush_complete;
 
 // Cache Datapath Instantiation
 cache_datapath #(
@@ -190,7 +192,8 @@ cache_controller #(
     .new_state              (new_state),
     .state_sel              (mux_en),
     .cache_ready            (cache_ready),
-    .cache_complete         (cache_complete)
+    .cache_complete         (cache_complete),
+    .flush_complete         (flush_complete)
 );
 
 // ACE Controller Instantiation (Assumed Ports)
@@ -231,5 +234,6 @@ ace_controller ace_ctrl (
     .CD_READY     (CD_READY),
     .CD_VALID     (CD_VALID)
 );
+
 
 endmodule

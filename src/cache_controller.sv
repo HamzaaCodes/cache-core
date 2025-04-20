@@ -28,6 +28,7 @@ module cache_controller #(
 
     // cache controller -> cpu
     output logic      cache_complete,
+    output logic      flush_complete,
     output logic      cache_ready
 );
 
@@ -36,7 +37,8 @@ typedef enum logic [2:0] {
     PROCESS_REQUEST = 3'b001,
     ALLOCATE_MEMORY = 3'b010,
     WRITEBACK       = 3'b011,
-    INVALIDATE      = 3'b100
+    INVALIDATE      = 3'b100,
+    FLUSH           = 3'b101
 } state_t;
 
 state_t state, next_state;
@@ -50,6 +52,7 @@ logic [4:0] state_select;
 // Decoding cache tasks
 assign read_en     = (cpu_request == 2'b00) ? 1 : 0;
 assign write_en    = (cpu_request == 2'b01) ? 1 : 0;
+assign flush_req   = (cpu_request == 2'b10) ? 1 : 0;
 assign no_task     = (cpu_request == 2'b11) ? 1 : 0;
 
 // Decoding current cache state logic
@@ -99,6 +102,7 @@ end
 always_comb begin
     cache_ready         = 0;
     cache_complete      = 0;
+    flush_complete      = 0;
     read_req            = 0;
     write_req           = 0;
     invalid_req         = 0;
@@ -112,8 +116,10 @@ always_comb begin
     state_sel           = 0;
     case(state)
         IDLE: begin
-            cache_ready         = 1;
-            if((read_en || write_en)) begin
+            cache_ready = 1;
+            if(flush_req) begin
+                next_state = FLUSH;
+            end else if(read_en || write_en) begin
                 next_state = PROCESS_REQUEST;
             end else begin
                 next_state = IDLE;
@@ -121,7 +127,9 @@ always_comb begin
         end
 
         PROCESS_REQUEST: begin
-            if(cache_hit && read_hit_en && !current_invalid) begin
+             if(flush_req) begin
+                next_state = FLUSH;
+            end else if(cache_hit && read_hit_en && !current_invalid) begin
                 cache_ready     = 1;
                 cache_complete  = 1;
                 next_state      = IDLE;
@@ -171,7 +179,9 @@ always_comb begin
         end
 
         ALLOCATE_MEMORY: begin
-            if (ace_ready) begin
+            if(flush_req) begin
+                next_state = FLUSH;
+            end else if (ace_ready) begin
                 write_from_interconnect = 1;
                 next_state          = PROCESS_REQUEST;
             end
@@ -182,28 +192,61 @@ always_comb begin
         end
 
         WRITEBACK: begin
-            if(!ace_ready) begin
-                next_state = WRITEBACK;
-                write_req  = 1; 
+            if (!ace_ready) begin
+                write_req   = 1;
+                next_state  = WRITEBACK;
             end 
-            else if (ace_ready) begin
-                read_req    = 1;
-                next_state  = ALLOCATE_MEMORY;
+            else begin
+                if (flush_req) begin
+                    next_state = FLUSH;
+                end else begin
+                    read_req   = 1;
+                    next_state = ALLOCATE_MEMORY;
+                end
             end
         end
 
+
         INVALIDATE: begin
-            if(!ace_ready) begin
+            if (!ace_ready) begin
                 next_state = INVALIDATE;
             end 
-            else if(ace_ready) begin
-                cache_complete  = 1;
-                cache_ready     = 1;
-                new_UD          = 1;
-                state_sel       = 1;
-                write_from_cpu  = 1;
-                next_state = IDLE;
-            end 
+            else begin
+                if (flush_req) begin
+                    next_state = FLUSH;
+                end else begin
+                    cache_complete  = 1;
+                    cache_ready     = 1;
+                    new_UD          = 1;
+                    state_sel       = 1;
+                    write_from_cpu  = 1;
+                    next_state      = IDLE;
+                end
+            end
+        end
+
+        FLUSH: begin
+            if (current_UD || current_SD) begin
+                write_req = 1;
+
+                if (ace_ready) begin
+                    state_sel    = 1;
+                    new_invalid  = 1;
+                end
+                // Stay in FLUSH regardless of ace_ready
+                next_state = FLUSH;
+
+            end else if (current_UC || current_SC || current_invalid) begin
+                state_sel    = 1;
+                new_invalid  = 1;
+                next_state   = FLUSH;
+
+            end else begin
+                flush_complete = 1;
+                cache_complete = 1;
+                cache_ready    = 1;
+                next_state     = IDLE;
+            end
         end
 
         default: begin

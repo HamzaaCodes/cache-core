@@ -225,7 +225,7 @@ module tb_top_level;
         integer i;
         begin 
             // Perform it many times ----- CPU will be idle for some time and will drive write/read requests at other
-            for (i=0; i < 500; i++) begin
+            for (i=0; i < 5000000; i++) begin
                 @(posedge clk);
                 // 30% chance that cpu won't interact with cache
                 if($urandom % 10 < 3) begin

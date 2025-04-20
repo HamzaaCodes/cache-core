@@ -13,6 +13,7 @@ module tb_cache_controller;
     logic [2:0] new_state;                         // New state of the cache line
     logic state_sel;                               // State selection signal
     logic cache_complete, cache_ready;             // Cache operation complete and ready flags
+    logic flush_complete;                          // Indicates flush complete
 
     // Randomized input signals for testing
     logic [1:0] random_cpu_request;                // Random CPU request (2-bit)
@@ -20,6 +21,7 @@ module tb_cache_controller;
 
     // Reference model signals (expected values)
     logic ref_cache_ready, ref_cache_complete;     // Reference model output signals for cache readiness and completeness
+    logic ref_flush_complete;                      // Reference model output for flush completion
     logic ref_read_req, ref_write_req, ref_invalid_req;    // Reference signals for requests
     logic ref_write_from_cpu, ref_write_from_interconnect; // Reference write source signals
     logic [2:0] ref_new_state;                     // Expected new state
@@ -42,6 +44,7 @@ module tb_cache_controller;
         .new_state(new_state),
         .state_sel(state_sel),
         .cache_complete(cache_complete),
+        .flush_complete(flush_complete),
         .cache_ready(cache_ready)
     );
 
@@ -65,6 +68,7 @@ module tb_cache_controller;
             random_ace_ready = 0;
             ref_cache_ready = 0;
             ref_cache_complete = 0;
+            ref_flush_complete = 0;
             ref_read_req = 0;
             ref_write_req = 0;
             ref_invalid_req = 0;
@@ -91,10 +95,6 @@ module tb_cache_controller;
             for (i = 0; i < 200; i = i + 1) begin
                 @(posedge clk);                    // Wait for the next clock cycle
                 random_cpu_request = $urandom % 4; // Generate random 2-bit CPU request
-                // Check if cpu_request is 10, and if so, change it to 00
-                if (random_cpu_request == 2'b10) begin
-                    random_cpu_request = 2'b00;
-                end
                 // Check if cpu_request is 11, and if so, change it to 01
                 else if (random_cpu_request == 2'b11) begin
                     random_cpu_request = 2'b01;
@@ -132,6 +132,7 @@ module tb_cache_controller;
             // Initialize reference model outputs
             ref_cache_ready = 0;
             ref_cache_complete = 0;
+            ref_flush_complete = 0;
             ref_read_req = 0;
             ref_write_req = 0;
             ref_invalid_req = 0;
@@ -172,6 +173,16 @@ module tb_cache_controller;
                         ref_invalid_req = 1;
                     end
                 end
+                2'b10: begin
+                     if (line_state == 3'b100) begin
+                        ref_invalid_req = 1;
+                    end else begin
+                        ref_cache_ready = 1;
+                        ref_cache_complete = 1;
+                        ref_flush_complete = 1;
+                        ref_new_state = 3'b001;
+                    end
+                end
                 default: begin
                     ref_cache_ready = cache_ready;
                     ref_cache_complete = cache_complete;
@@ -193,6 +204,7 @@ module tb_cache_controller;
             // Compare the reference model with actual output from UUT
             if (cache_ready !== ref_cache_ready ||
                 cache_complete !== ref_cache_complete ||
+                flush_complete !== ref_flush_complete ||
                 read_req !== ref_read_req ||
                 write_req !== ref_write_req ||
                 invalid_req !== ref_invalid_req ||
@@ -202,10 +214,10 @@ module tb_cache_controller;
                 state_sel !== ref_state_sel) 
             begin
                 $display("ERROR: Cache Controller Output Mismatch at time %0t", $time);
-                $display("Expected - cache_ready: %b, cache_complete: %b, read_req: %b, write_req: %b, invalid_req: %b, write_from_cpu: %b, write_from_interconnect: %b, new_state: %b, state_sel: %b",
-                    ref_cache_ready, ref_cache_complete, ref_read_req, ref_write_req, ref_invalid_req, ref_write_from_cpu, ref_write_from_interconnect, ref_new_state, ref_state_sel);
-                $display("Actual   - cache_ready: %b, cache_complete: %b, read_req: %b, write_req: %b, invalid_req: %b, write_from_cpu: %b, write_from_interconnect: %b, new_state: %b, state_sel: %b",
-                    cache_ready, cache_complete, read_req, write_req, invalid_req, write_from_cpu, write_from_interconnect, new_state, state_sel);
+                $display("Expected - cache_ready: %b, cache_complete: %b, flush_complete: %b, read_req: %b, write_req: %b, invalid_req: %b, write_from_cpu: %b, write_from_interconnect: %b, new_state: %b, state_sel: %b",
+                    ref_cache_ready, ref_cache_complete, ref_flush_complete, ref_read_req, ref_write_req, ref_invalid_req, ref_write_from_cpu, ref_write_from_interconnect, ref_new_state, ref_state_sel);
+                $display("Actual   - cache_ready: %b, cache_complete: %b, flush_complete: %b, read_req: %b, write_req: %b, invalid_req: %b, write_from_cpu: %b, write_from_interconnect: %b, new_state: %b, state_sel: %b",
+                    cache_ready, cache_complete, flush_complete, read_req, write_req, invalid_req, write_from_cpu, write_from_interconnect, new_state, state_sel);
             end else begin
                 $display("Monitor Passed: Cache Controller working correctly for CPU request %b at time %0t", cpu_request, $time);
             end
